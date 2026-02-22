@@ -1,25 +1,39 @@
-# AI Agents CLI Chat (Gemini / Google AI Studio)
+# CLI Agent System
 
-Multi-agent CLI чат (людина ↔ кілька агентів-ролей) на Node.js з реальним Gemini API.
+This is a simple CLI-based application that supports two startup modes:
+- Human mode
+- Agent mode
 
-## Setup
-1) Node.js 18+
-2) Create `.env` from `.env.example` and set `GEMINI_API_KEY`
+## Requirements
+- Node.js 18+
 
-## Run
-npm install
-npm start
+## How to Run
 
-## Commands
-/agents
-/use analyst
-/all on
-/all off
-/reset
-/exit
+### Human mode
 
-## Architecture
-- index.js — CLI + routing + state
-- agents.js — roles (agents) with different system instructions
-- llm.js — single integration point with Gemini API via @google/genai
-- Each agent has separate conversation memory (historyByAgent)
+node index.js --human
+
+Starts an interactive CLI session for a human user.
+
+---
+
+### Agent mode
+
+node index.js --agent=legal
+
+Starts the application as a specific agent.
+The agent identifies itself and loads its behavior rules immediately.
+
+---
+
+## Concept
+
+The application supports different startup keys:
+
+- `--human` → interactive user session
+- `--agent=<agentId>` → agent startup mode
+
+In agent mode:
+- The system identifies the agent via CLI argument
+- Loads its behavior rules
+- Executes in the context of that agent
