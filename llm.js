@@ -130,10 +130,10 @@ async function geminiRespond({ apiKey, model, agent, task, context }) {
     model,
     contents,
     config: {
-      systemInstruction: agent.rules
+      systemInstruction: agent.rules,
       // Optional tuning:
       // temperature: 0.2,
-      // maxOutputTokens: 400,
+      maxOutputTokens: 2000,
     }
   });
 

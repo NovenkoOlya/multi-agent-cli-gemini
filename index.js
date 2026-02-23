@@ -1,4 +1,5 @@
 // index.js
+import chalk from "chalk";
 import readline from "node:readline";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -6,6 +7,9 @@ import { AGENTS } from "./agents.js";
 import { parseArgs, runAgent } from "./llm.js";
 
 const argvMap = parseArgs(process.argv);
+
+const enabledIds = ["tech", "business"];
+const enabledAgents = AGENTS.filter(a => enabledIds.includes(a.id));
 
 // LLM config without .env:
 // - either pass via environment variable GEMINI_API_KEY
@@ -50,8 +54,8 @@ function printHeader() {
 function listAgents() {
   console.log("Agents:");
   for (const a of AGENTS) {
-    console.log(`- ${a.id} (${a.name})`);
-    console.log(`  Rules: ${a.instructions}`);
+    console.log(chalk.cyan(`- ${a.id} (${a.name})`));
+    console.log(chalk.green(`  Rules: ${a.instructions}`));
   }
 }
 
@@ -60,6 +64,24 @@ function parseCommand(line) {
   if (!t.startsWith("/")) return null;
   const [cmd, ...args] = t.slice(1).split(/\s+/);
   return { cmd: cmd.toLowerCase(), args, rawArgsText: t.slice(1 + cmd.length).trim() };
+}
+
+function parseTarget(line) {
+  const m = line.trim().match(/^@(\w+)\s+(.*)$/);
+  if (!m) return { target: null, text: line.trim() };
+  return { target: m[1].toLowerCase(), text: m[2].trim() };
+}
+
+function resolveAgentsToRun(target, enabledAgents) {
+  // ✅ якщо тег НЕ вказаний → відповідають всі enabled агенти
+  if (!target) return enabledAgents;
+
+  // ✅ якщо явно @all → теж всі
+  if (target === "all") return enabledAgents;
+
+  // ✅ якщо вказаний конкретний тег → шукаємо цього агента серед enabled
+  const agent = enabledAgents.find(a => a.id === target);
+  return agent ? [agent] : []; // якщо не знайдено — пусто
 }
 
 async function runAllAgents() {
@@ -76,7 +98,7 @@ async function runAllAgents() {
 
   state.lastRuns = [];
 
-  for (const agent of AGENTS) {
+  for (const agent  of enabledAgents) {
     const out = await runAgent({
       agent,
       task: state.task,
@@ -89,11 +111,16 @@ async function runAllAgents() {
     state.lastRuns.push({ agentId: agent.id, agentName: agent.name, output: out });
   }
 
+  const COLORS = ['green', 'yellow', 'magenta', 'blue', 'red'];
+  
   // Print numbered outputs so operator can pick
   state.lastRuns.forEach((r, i) => {
-    console.log(`[#${i + 1}] ${r.agentName} (${r.agentId})`);
-    console.log(r.output);
-    console.log("\n----------------------\n");
+    const color = COLORS[i % COLORS.length];
+    console.log(
+      `${chalk.cyan(`[#${i + 1}] ${r.agentName}`)} ${chalk.gray(`(${r.agentId})`)}\n` +
+      `${chalk[color](r.output)}\n` +
+      `${chalk.blue("----------------------")}\n`
+    );
   });
 
   console.log("Operator action: /pick <n> to choose an intermediate decision, or /refine <text> then /run again.\n");
@@ -147,6 +174,29 @@ function refine(text) {
   console.log("Added operator context. Now run /run again.");
 }
 
+
+function getEnabledAgents() {
+  return AGENTS.filter(a => enabledIds.includes(a.id));
+}
+
+
+
+async function respond(agent, userText) {
+  const out = await runAgent({
+    agent,
+    task: userText,
+    context: state.operatorContext || "",
+    useLLM,
+    apiKey,
+    model
+  });
+
+  const color = COLORS[index % COLORS.length];
+
+  console.log(chalk.cyan(`\n[${agent.name} (${agent.id})]`)); 
+  console.log(chalk[color](out) + "\n");
+}
+
 async function main() {
   printHeader();
 
@@ -159,12 +209,25 @@ async function main() {
 
     try {
       if (!cmdObj) {
-        // If user types plain text, treat it as task (nice UX)
-        const txt = line.trim();
-        if (txt) {
-          state.task = txt;
-          console.log("Task set. Run /run to evaluate with agents.");
+        const { target, text } = parseTarget(line);
+        if (!text) { rl.prompt(); return; }
+
+        const enabledAgents = getEnabledAgents();
+        const agentsToRun = resolveAgentsToRun(target, enabledAgents);
+      
+        if (target && agentsToRun.length === 0) {
+          console.log(`Unknown or disabled agent: ${target}`);
+          rl.prompt();
+          return;
         }
+      
+        // ✅ якщо хочеш, щоб plain text також оновлював state.task:
+        state.task = text;
+      
+        for (const agent of agentsToRun) {
+          await respond(agent, text);
+        }
+      
         rl.prompt();
         return;
       }
