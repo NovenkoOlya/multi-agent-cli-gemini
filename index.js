@@ -1,15 +1,21 @@
 import chalk from "chalk";
 import readline from "node:readline";
+import fs from 'node:fs';
 import { stdin as input, stdout as output } from "node:process";
 
 import { AGENTS } from "./agents.js";
 import { parseArgs, runAgent } from "./llm.js";
 import { SETTINGS } from "./settings.js";
 
-const { theme, defaults, defaultMarking } = SETTINGS;
+const { theme, defaults, defaultMarking, storage } = SETTINGS;
 const { titles, help, status, errorsTitle, warnings } = SETTINGS.ui;
 
 const argvMap = parseArgs(process.argv);
+
+const isHuman = !argvMap.agent; 
+const isMachine = Boolean(argvMap.agent);
+
+const mode = isMachine ? SETTINGS.appModes.AGENT : SETTINGS.appModes.HUMAN;
 
 const enabledIds = defaults.enabledAgents;
 const enabledAgents = AGENTS.filter(a => enabledIds.includes(a.id));
@@ -21,20 +27,34 @@ const apiKey = process.env.GEMINI_API_KEY || argvMap.key || null;
 const model = argvMap.model || SETTINGS.defaults.model;
 
 // default: LLM off unless explicitly enabled with --llm or /llm on
-let useLLM = Boolean(argvMap.llm);
+let useLLM = Boolean(argvMap.llm) || Boolean(argvMap.key);
 
 // Operator state
 const state = {
   task: "",
   operatorContext: "", // notes/clarifications from operator
   lastRuns: [],        // [{agentId, agentName, output}]
-  picked: null         // {index, agentId, output}
+  picked: null,         // {index, agentId, output}
+  sessionId: argvMap.session || `session-${Date.now()}`,
+  task: "",
+  lastRuns: []
 };
+
+// Якщо ми продовжили сесію, спробуємо завантажити останній контекст
+if (argvMap.session && fs.existsSync(SETTINGS.storage.memoryFile)) {
+  const data = JSON.parse(fs.readFileSync(SETTINGS.storage.memoryFile, 'utf8'));
+  if (data[state.sessionId] && data[state.sessionId].history.length > 0) {
+    const history = data[state.sessionId].history;
+    // Беремо контент останнього вибору як контекст для агентів
+    state.operatorContext = history[history.length - 1].content;
+    console.log(chalk.green(`\n✔ Continued session: ${state.sessionId}`));
+    console.log(chalk.gray(`Last context loaded (${state.operatorContext.slice(0, 40)}...)`));
+  }
+}
 
 function getLLMStatusString() {
 
-  const llmStatus = useLLM ? status.llmOn : status.llmOff;
-  const keyInfo = useLLM ? (apiKey ? labels.keyDetected : labels.mockFallback) : "";
+  const llmStatus = useLLM ? status.llmOn : status.llmOff;  const keyInfo = useLLM ? (apiKey ? status.keyDetected : status.mockFallback) : "";
 
   return `${titles.llmMode} ${llmStatus} ${keyInfo}`;
 }
@@ -106,7 +126,7 @@ async function runAllAgents() {
 
   console.log(titles.runnindAgents);
   console.log(`${titles.task} ${state.task}`);
-  if (state.operatorContext.trim()) console.log(`${title.context} ${state.operatorContext}`);
+  if (state.operatorContext.trim()) console.log(`${titles.context} ${state.operatorContext}`);
 
   console.log(`${getLLMStatusString()}\n`);
   console.log(defaultMarking.separator);
@@ -146,13 +166,41 @@ function pickDecision(n) {
     console.log(warnings.nothingPick);
     return;
   }
+  
   const idx = n - 1;
-  if (Number.isNaN(idx) || idx < 0 || idx >= state.lastRuns.length) {
-    console.log(warnings.invalidPick);
-    return;
-  }
   state.picked = { index: n, ...state.lastRuns[idx] };
-  console.log(`${title.decisionPicked} ${defaultMarking.point}${n} (${state.picked.agentName} / ${state.picked.agentId})`);
+
+  const filePath = SETTINGS.storage.memoryFile;
+  const newEntry = {
+    timestamp: new Date().toISOString(),
+    task: state.task,
+    agent: state.picked.agentName,
+    content: state.picked.output
+  };
+
+  let allChats = {}; // Змінюємо масив на об'єкт для зручності чатів
+
+  // 1. Читаємо існуючі дані
+  if (fs.existsSync(filePath)) {
+    try {
+      allChats = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (e) { allChats = {}; }
+  }
+
+  // 2. Якщо цього чату ще немає в файлі — створюємо його
+  if (!allChats[state.sessionId]) {
+    allChats[state.sessionId] = {
+      startTime: new Date().toISOString(),
+      history: []
+    };
+  }
+
+  // 3. ДОДАЄМО (push) новий вибір у цей конкретний чат
+  allChats[state.sessionId].history.push(newEntry);
+
+  // 4. Записуємо все назад
+  fs.writeFileSync(filePath, JSON.stringify(allChats, null, 2));
+  console.log(`${titles.decisionPicked} ${defaultMarking.point}${n} ${warnings.savedMemory} ${state.sessionId}`);
 }
 
 function showFinal() {
@@ -160,8 +208,8 @@ function showFinal() {
     console.log(warnings.noDecision);
     return;
   }
-  console.log(title.decisionOperator);
-  console.log(`${title.decisionPicked} ${defaultMarking.point}${state.picked.index} ${state.picked.agentName} (${state.picked.agentId})`);
+  console.log(titles.decisionOperator);
+  console.log(`${s.decisionPicked} ${defaultMarking.point}${state.picked.index} ${state.picked.agentName} (${state.picked.agentId})`);
   console.log(state.picked.output);
   console.log(`${defaultMarking.separator_2}\n`);
 }
@@ -219,10 +267,16 @@ async function respond(agent, userText) {
 }
 
 async function main() {
-  printHeader();
+  if (isHuman) {
+    printHeader();
+  }
 
   const rl = readline.createInterface({ input, output });
-  rl.setPrompt("> ");
+  if (isHuman) {
+    rl.setPrompt(defaultMarking.prompt);
+  } else {
+    rl.setPrompt(""); 
+  }
   rl.prompt();
 
   rl.on("line", async (line) => {
@@ -301,6 +355,50 @@ async function main() {
 
       if (cmd === "final") {
         showFinal();
+        rl.prompt();
+        return;
+      }
+
+      if (cmd === "chats") {
+        const filePath = SETTINGS.storage.memoryFile;
+      
+        if (fs.existsSync(filePath)) {
+          try {
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            // Перевірка на порожній файл
+            if (!fileContent.trim()) {
+              console.log(theme.subtitle(warnings.historyEmpty));
+            } else {
+              const data = JSON.parse(fileContent);
+              const sessions = Object.keys(data);
+      
+              if (sessions.length === 0) {
+                console.log(theme.subtitle(warnings.noSessions));
+              } else {
+                console.log(theme.highlight(`\n${titles.chatSession}`));
+                
+                sessions.forEach(id => {
+                  const session = data[id];
+                  const count = (session.history && Array.isArray(session.history)) 
+                    ? session.history.length 
+                    : 0;
+
+                  const date = session.startTime 
+                    ? new Date(session.startTime).toLocaleString() 
+                    : warnings.unknownDate;
+      
+                  console.log(`${theme.textWhite(id)} | ${theme.success(titles.records + count)} | ${theme.defaultColor(date)}`);
+                });
+                console.log(theme.highlight(`${defaultMarking.separator}\n`));
+              }
+            }
+          } catch (e) {
+            console.log(theme.error(`${errorsTitle.parseHistory} ${e.message}`));
+          }
+        } else {
+          console.log(theme.subtitle(warnings.noHistory));
+        }
+        
         rl.prompt();
         return;
       }

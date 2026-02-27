@@ -12,3 +12,6 @@ yarn-error.log*
 # OS / editor
 .DS_Store
 .vscode/
+
+# shared memory
+./storage/shared_memory.json
