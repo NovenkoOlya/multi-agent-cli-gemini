@@ -14,4 +14,4 @@ yarn-error.log*
 .vscode/
 
 # shared memory
-./storage/shared_memory.json
+storage/shared_memory.json
