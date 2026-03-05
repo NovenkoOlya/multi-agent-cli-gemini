@@ -1,4 +1,3 @@
-import chalk from "chalk";
 import readline from "node:readline";
 import fs from 'node:fs';
 import { stdin as input, stdout as output } from "node:process";
@@ -40,15 +39,15 @@ const state = {
   lastRuns: []
 };
 
-// Якщо ми продовжили сесію, спробуємо завантажити останній контекст
+// If we have continued the session, we will try to load the latest context
 if (argvMap.session && fs.existsSync(SETTINGS.storage.memoryFile)) {
   const data = JSON.parse(fs.readFileSync(SETTINGS.storage.memoryFile, 'utf8'));
   if (data[state.sessionId] && data[state.sessionId].history.length > 0) {
     const history = data[state.sessionId].history;
-    // Беремо контент останнього вибору як контекст для агентів
+    // take the content of the last choice as the context for agents
     state.operatorContext = history[history.length - 1].content;
-    console.log(chalk.green(`\n✔ Continued session: ${state.sessionId}`));
-    console.log(chalk.gray(`Last context loaded (${state.operatorContext.slice(0, 40)}...)`));
+    console.log(theme.success(`\n${warnings.sessionContinues} ${state.sessionId}`));
+    console.log(theme.defaultColor(`${warnings.lastContent} (${state.operatorContext.slice(0, 40)}...)`));
   }
 }
 
@@ -256,7 +255,7 @@ async function respond(agent, userText) {
 
     const colorFn = getAgentColor(agent.id);
 
-    const headerStyle = theme?.highlight || chalk.cyan;
+    const headerStyle = theme?.highlight;
 
     console.log(headerStyle(`\n[${agent.name} (${agent.id})]`)); 
     console.log(colorFn(out) + "\n");

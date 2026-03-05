@@ -1,5 +1,3 @@
-import chalk from "chalk";
-
 export const SETTINGS = {
     appModes: {
       HUMAN: "human",
@@ -11,26 +9,26 @@ export const SETTINGS = {
   },
 
     theme: {
-        header: chalk.bold.magenta,
-        subtitle: chalk.yellow,
-        info: chalk.blue,
-        textWhite: chalk.white,
-        success: chalk.green,
-        error: chalk.red.bold,
-        highlight: chalk.cyan,
-        defaultColor: chalk.gray,
-        
-        agentName: (name) => chalk.black.bgCyan(` ${name} `),
+      header: (text) => `\x1b[1m\x1b[35m${text}\x1b[0m`,    // Bold Magenta
+      subtitle: (text) => `\x1b[33m${text}\x1b[0m`,        // Yellow
+      info: (text) => `\x1b[34m${text}\x1b[0m`,            // Blue
+      textWhite: (text) => `\x1b[37m${text}\x1b[0m`,       // White
+      success: (text) => `\x1b[32m${text}\x1b[0m`,         // Green
+      error: (text) => `\x1b[1m\x1b[31m${text}\x1b[0m`,     // Bold Red
+      highlight: (text) => `\x1b[36m${text}\x1b[0m`,       // Cyan
+      defaultColor: (text) => `\x1b[90m${text}\x1b[0m`,    // Gray
+      
+      agentName: (name) => `\x1b[30m\x1b[46m ${name} \x1b[0m` // Black text, Cyan BG
       },
 
     // colors for displaying agents
     agentColors: [
-        chalk.green,
-        chalk.yellow,
-        chalk.magenta,
-        chalk.blue,
-        chalk.cyan,
-        chalk.red
+        (text) => `\x1b[32m${text}\x1b[0m`, // green
+        (text) => `\x1b[33m${text}\x1b[0m`, // yellow
+        (text) => `\x1b[35m${text}\x1b[0m`, // magenta
+        (text) => `\x1b[34m${text}\x1b[0m`, // blue
+        (text) => `\x1b[36m${text}\x1b[0m`, // cyan
+        (text) => `\x1b[31m${text}\x1b[0m`  // red
       ],
     
     // // system colors
@@ -114,7 +112,9 @@ export const SETTINGS = {
             historyEmpty: "History file is empty.",
             noSessions: "No active sessions found in storage.",
             unknownDate: "Unknown date",
-            noHistory: "No history file found yet. Run /pick to save something!"
+            noHistory: "No history file found yet. Run /pick to save something!",
+            sessionContinues: "✔ Continued session:",
+            lastContent: "Last context loaded"
         }
       }
   };
